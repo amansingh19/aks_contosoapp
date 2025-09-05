@@ -1,0 +1,70 @@
+trigger: none  # Run manually when you need to provision infra
+
+variables:
+  resourceGroup: 'rg-demo-aks'
+  location: 'centralus'
+  acrName: 'contosoacr$(Build.BuildId)'   # unique per run (or set a fixed name you like)
+  createAks: 'true'                       # set 'false' to create only RG+ACR
+
+  # AKS settings (used only if createAks == 'true')
+  aksName: 'aks-demo-cluster'
+  vmSku: 'Standard_B2s'
+  nodeCount: '1'
+  dnsPrefix: 'contoso-aks-demo'           # must be globally unique
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+- stage: Provision
+  displayName: Provision Azure Resources
+  jobs:
+  - job: CreateInfra
+    displayName: Create RG + ACR (+ AKS optional)
+    steps:
+    - task: AzureCLI@2
+      displayName: 'Create RG, ACR, and optionally AKS'
+      inputs:
+        azureSubscription: 'sc-azure-sub'
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -euo pipefail
+
+          echo "==> Ensuring Resource Group exists: $resourceGroup"
+          az group create --name "$resourceGroup" --location "$location" --only-show-errors
+
+          # Create ACR if it doesn't exist
+          if az acr show -g "$resourceGroup" -n "$acrName" --only-show-errors >/dev/null 2>&1; then
+            echo "==> ACR already exists: $acrName"
+          else
+            echo "==> Creating ACR: $acrName"
+            az acr create -g "$resourceGroup" -n "$acrName" --sku Standard --only-show-errors
+          fi
+
+          if [ "${createAks}" = "true" ]; then
+            # Create AKS if it doesn't exist
+            if az aks show -g "$resourceGroup" -n "$aksName" --only-show-errors >/dev/null 2>&1; then
+              echo "==> AKS already exists: $aksName"
+              # Ensure ACR is attached (safe to re-run)
+              az aks update -g "$resourceGroup" -n "$aksName" --attach-acr "$acrName" --only-show-errors
+            else
+              echo "==> Creating AKS: $aksName (nodes: $nodeCount, size: $vmSku)"
+              az aks create \
+                --resource-group "$resourceGroup" \
+                --name "$aksName" \
+                --node-count "$nodeCount" \
+                --node-vm-size "$vmSku" \
+                --enable-managed-identity \
+                --enable-addons monitoring \
+                --generate-ssh-keys \
+                --attach-acr "$acrName" \
+                --dns-name-prefix "$dnsPrefix" \
+                --only-show-errors
+            fi
+          else
+            echo "==> Skipping AKS creation (createAks=$createAks)"
+          fi
+
+          echo "==> ACR login server:"
+          az acr show -n "$acrName" --query loginServer -o tsv
