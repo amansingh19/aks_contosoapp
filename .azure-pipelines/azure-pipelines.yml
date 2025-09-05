@@ -1,0 +1,40 @@
+trigger:
+  branches:
+    include:
+  buildContext:  '$(Build.SourcesDirectory)'  # e.g., '$(Build.SourcesDirectory)/src/service'
+
+  # Optional: set your ACR name just for the echo message below
+  acrName: 'fpacr0125016'                    # e.g., contosoacr12345
+# ---------- END EDIT ------------
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- checkout: self
+
+- task: Docker@2
+  displayName: 'Build & push image to ACR'
+  inputs:
+    command: buildAndPush
+    repository: '$(imageRepository)'
+    dockerfile: '$(dockerfilePath)'
+    containerRegistry: '$(dockerRegistryServiceConnection)'
+    tags: |
+      $(imageTag)
+    buildContext: '$(buildContext)'
+
+# Optional: prints the full image path you'll later use in AKS
+- script: |
+    echo "Pushed image:"
+    echo "$(acrName).azurecr.io/$(imageRepository):$(imageTag)"
+  displayName: 'Show final image name'      - main
+
+# ---------- EDIT THESE ----------
+variables:
+  dockerRegistryServiceConnection: 'sc-acr'   # name you created in DevOps
+  imageRepository: 'aks-contoso-app'          # name of the image inside ACR
+  imageTag: '$(Build.BuildId)'                # unique tag per build
+
+  # If your Dockerfile isn't at repo root, update these two:
+  dockerfilePath: 'Dockerfile'                # e.g., 'src/service/Dockerfile'
