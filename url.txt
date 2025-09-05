@@ -1,0 +1,6 @@
+https://learn.microsoft.com/en-us/azure/aks/tutorial-kubernetes-prepare-app?tabs=azure-cli
+
+az aks nodepool scale --resource-group rg_aks --cluster-name myAKSCluster --name nodepool1 --node-count 0
+
+
+cd aks-store-demo
